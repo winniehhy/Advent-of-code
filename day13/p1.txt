@@ -45,4 +45,4 @@ You estimate that each button would need to be pressed no more than 100 times to
 
 Figure out how to win as many prizes as possible. What is the fewest tokens you would have to spend to win all possible prizes?
 
-ans : 
+ans : 37680
