@@ -1,40 +1,39 @@
 const fs = require('fs');
 
-// Read input from the file
-const lines = fs.readFileSync('input.txt', 'utf-8').trim().split("\n");
-const units = lines[0].split(", ");
-const designs = lines.slice(2);
+// Read input from file and split into lines
+const lines = fs.readFileSync('input.txt', 'utf-8').split('\n');
 
-// Function to check if a design can be made using the units
-function possible(design) {
-    const n = design.length;
-    const dp = Array(n).fill(0); // Initialize dp array with 0
+// Parse the patterns from the first line and store them in a set
+const patterns = new Set(lines[0].split(', '));
+const maxLen = Math.max(...patterns.size ? [...patterns].map(p => p.length) : [0]);
 
-    for (let i = 0; i < n; i++) {
-        // Check if the design can be created from the start
-        if (units.includes(design.slice(0, i + 1))) {
-            dp[i] = 1;
-        }
+// Cache to store previously calculated results for designs
+const cache = {};
 
-        // Check if the design can be constructed from units
-        for (const unit of units) {
-            if (i - unit.length + 1 >= 0 && design.slice(i - unit.length + 1, i + 1) === unit) {
-                dp[i] += dp[i - unit.length]; // Add ways from previous dp index
-            }
-        }
-
-        // Debugging: Check the dp array at each index
-        console.log(`dp[${i}] = ${dp[i]}`);
+// Recursive function to find permutations for a given design
+function findPermutation(design) {
+    if (design === "") {
+        return 1;
     }
-
-    // Debugging: Check the final dp array and return the result
-    console.log('Final dp array:', dp);
-    return dp[n - 1];
+    let count = 0;
+    if (cache[design]) {
+        return cache[design];
+    }
+    for (let i = 0; i <= Math.min(design.length, maxLen); i++) {
+        if (patterns.has(design.substring(0, i))) {
+            count += findPermutation(design.substring(i));
+        }
+    }
+    cache[design] = count;
+    return count;
 }
 
-let ans = 0;
-for (const design of designs) {
-    ans += possible(design);
+// Sum the permutations for each design in the input
+let result = 0;
+for (let i = 2; i < lines.length; i++) {
+    const design = lines[i];
+    result += findPermutation(design);
 }
 
-console.log('Final answer:', ans);
+// Output the result
+console.log(result);
