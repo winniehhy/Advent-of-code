@@ -1,84 +1,143 @@
-const fs = require("fs");
+const fs = require('fs');
 
-const input = fs.readFileSync("input.txt", "utf-8").trim().split("\n\n");
+let formulas = {};
 
-const ins = {};
-
-// Number of wires
-const N = 44;
-
-input[1].split("\n").forEach(line => {
-    const [w1, op, w2, , out] = line.split(" ");
-    ins[out] = [w1, w2, op];
-});
-
-function simulate(x, y) {
-    const wires = {};
-
-    // Initialize the wires based on x and y
-    for (let i = 0; i <= N; i++) {
-        wires[`x${i.toString().padStart(2, '0')}`] = (x & (1 << i)) >> i;
-        wires[`y${i.toString().padStart(2, '0')}`] = (y & (1 << i)) >> i;
-    }
-
-    function get(wire) {
-        if (wire in wires) {
-            return wires[wire];
+// Parse input file
+function parseInput() {
+    const content = fs.readFileSync('input.txt', 'utf-8').split('\n');
+    let pastEmptyLine = false;
+    
+    for (const line of content) {
+        if (!line.trim()) {
+            pastEmptyLine = true;
+            continue;
         }
-
-        const [w1, w2, op] = ins[wire];
-
-        if (op === "AND") {
-            wires[wire] = get(w1) & get(w2);
-        } else if (op === "OR") {
-            wires[wire] = get(w1) | get(w2);
-        } else if (op === "XOR") {
-            wires[wire] = get(w1) ^ get(w2);
-        }
-
-        return wires[wire];
+        if (!pastEmptyLine) continue;
+        
+        const [x, op, y, z] = line.replace(' -> ', ' ').split(' ');
+        formulas[z] = [op, x, y];
     }
-
-    let z = 0;
-    for (let i = 0; i <= N; i++) {
-        z <<= 1;
-        z ^= get(`z${i.toString().padStart(2, '0')}`);
-    }
-
-    return [wires, z];
 }
 
-let x = 0;
-let y = 0;
+function makeWire(char, num) {
+    return char + String(num).padStart(2, '0');
+}
 
-// Initialize x and y based on the first part of the input
-input[0].split("\n").slice(0, N).forEach(line => {
-    x <<= 1;
-    x ^= parseInt(line.split(" ")[1]);
-});
-input[0].split("\n").slice(N, N * 2).forEach(line => {
-    y <<= 1;
-    y ^= parseInt(line.split(" ")[1]);
-});
-
-const bad = new Set();
-for (let it = 0; it < 1000; it++) {
-    x = Math.floor(Math.random() * (1 << (N + 1)));
-    y = Math.floor(Math.random() * (1 << (N + 1)));
+function verifyZ(wire, num) {
+    if (!(wire in formulas)) return false;
+    const [op, x, y] = formulas[wire];
+    if (op !== 'XOR') return false;
     
-    const [wires, z_out] = simulate(x, y);
-    const z = x + y;
+    if (num === 0) {
+        return JSON.stringify([x, y].sort()) === JSON.stringify(['x00', 'y00']);
+    }
+    
+    return (verifyIntermediateXor(x, num) && verifyCarryBit(y, num)) ||
+           (verifyIntermediateXor(y, num) && verifyCarryBit(x, num));
+}
 
-    for (let i = 0; i <= N + 1; i++) {
-        if ((z & (1 << i)) !== (z_out & (1 << i))) {
-            const wire = `z${i.toString().padStart(2, '0')}`;
-            if (!bad.has(wire)) {
-                bad.add(wire);
+function verifyIntermediateXor(wire, num) {
+    if (!(wire in formulas)) return false;
+    const [op, x, y] = formulas[wire];
+    if (op !== 'XOR') return false;
+    
+    return JSON.stringify([x, y].sort()) === 
+           JSON.stringify([makeWire('x', num), makeWire('y', num)].sort());
+}
+
+function verifyCarryBit(wire, num) {
+    if (!(wire in formulas)) return false;
+    const [op, x, y] = formulas[wire];
+    
+    if (num === 1) {
+        if (op !== 'AND') return false;
+        return JSON.stringify([x, y].sort()) === JSON.stringify(['x00', 'y00']);
+    }
+    
+    if (op !== 'OR') return false;
+    return (verifyDirectCarry(x, num - 1) && verifyRecarry(y, num - 1)) ||
+           (verifyDirectCarry(y, num - 1) && verifyRecarry(x, num - 1));
+}
+
+function verifyDirectCarry(wire, num) {
+    if (!(wire in formulas)) return false;
+    const [op, x, y] = formulas[wire];
+    if (op !== 'AND') return false;
+    
+    return JSON.stringify([x, y].sort()) === 
+           JSON.stringify([makeWire('x', num), makeWire('y', num)].sort());
+}
+
+function verifyRecarry(wire, num) {
+    if (!(wire in formulas)) return false;
+    const [op, x, y] = formulas[wire];
+    if (op !== 'AND') return false;
+    
+    return (verifyIntermediateXor(x, num) && verifyCarryBit(y, num)) ||
+           (verifyIntermediateXor(y, num) && verifyCarryBit(x, num));
+}
+
+function verify(num) {
+    return verifyZ(makeWire('z', num), num);
+}
+
+function progress() {
+    let i = 0;
+    while (true) {
+        if (!verify(i)) break;
+        i++;
+    }
+    return i;
+}
+
+function printTree(wire, depth) {
+    if (!(wire in formulas)) {
+        if (wire[0] === 'x' || wire[0] === 'y') {
+            return '  '.repeat(depth) + wire;
+        }
+        return '';
+    }
+    const [op, x, y] = formulas[wire];
+    return '  '.repeat(depth) + op + ' (' + wire + ')\n' + 
+           printTree(x, depth + 1) + '\n' + 
+           printTree(y, depth + 1);
+}
+
+// Main execution
+try {
+    parseInput();
+    const swaps = [];
+    
+    for (let i = 0; i < 4; i++) {
+        const baseline = progress();
+        let found = false;
+        
+        for (const x of Object.keys(formulas)) {
+            if (found) break;
+            
+            for (const y of Object.keys(formulas)) {
+                if (x === y) continue;
+                
+                // Swap formulas
+                const tempX = formulas[x];
+                const tempY = formulas[y];
+                formulas[x] = tempY;
+                formulas[y] = tempX;
+                
+                if (progress() > baseline) {
+                    swaps.push(x, y);
+                    found = true;
+                    break;
+                }
+                
+                // Swap back if not improved
+                formulas[x] = tempX;
+                formulas[y] = tempY;
             }
         }
     }
+    
+    console.log(swaps.sort().join(','));
+} catch (error) {
+    console.error("Error:", error.message);
 }
-
-// Sorting and outputting the correct wire names involved in swaps
-const badWires = [...bad].sort();
-console.log(badWires.join(", "));
